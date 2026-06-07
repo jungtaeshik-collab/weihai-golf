@@ -120,6 +120,17 @@ export default function App() {
   const [editingRate, setEditingRate] = useState(false);
   const effectiveRate = manualRate ? parseFloat(manualRate) : (rate || 190);
 
+  // 날씨 state: { date -> { icon, desc, temp, humidity, wind } }
+  const [weather, setWeather] = useState({});
+  const [weatherLoading, setWeatherLoading] = useState(true);
+
+  const WEATHER_ICONS = {
+    "01d":"☀️","01n":"🌙","02d":"⛅","02n":"⛅",
+    "03d":"☁️","03n":"☁️","04d":"☁️","04n":"☁️",
+    "09d":"🌧️","09n":"🌧️","10d":"🌦️","10n":"🌦️",
+    "11d":"⛈️","11n":"⛈️","13d":"❄️","13n":"❄️","50d":"🌫️","50n":"🌫️"
+  };
+
   const handleSetNickname = (name) => {
     localStorage.setItem("wg_nick", name);
     setNickname(name);
@@ -135,6 +146,36 @@ export default function App() {
           setRateTime(new Date().toLocaleTimeString("ko-KR",{hour:"2-digit",minute:"2-digit"}));
         }
       }).catch(()=>{});
+  }, []);
+
+  // 웨이하이 날씨 (5일 예보)
+  useEffect(() => {
+    const APIKEY = "4db7eb6ea83717e12398c2c82b2d6ed1";
+    // 웨이하이 좌표
+    fetch(`https://api.openweathermap.org/data/2.5/forecast?lat=37.5098&lon=122.1198&appid=${APIKEY}&units=metric&lang=kr`)
+      .then(r=>r.json())
+      .then(data => {
+        if (!data.list) return;
+        // 날짜별로 낮 12시 전후 데이터 선택
+        const byDate = {};
+        data.list.forEach(item => {
+          const date = item.dt_txt.slice(0,10);
+          // 12:00 데이터 우선, 없으면 아무거나
+          if (!byDate[date] || item.dt_txt.includes("12:00")) {
+            byDate[date] = {
+              icon: WEATHER_ICONS[item.weather[0].icon] || "🌤️",
+              desc: item.weather[0].description,
+              temp: Math.round(item.main.temp),
+              tempMin: Math.round(item.main.temp_min),
+              tempMax: Math.round(item.main.temp_max),
+              humidity: item.main.humidity,
+              wind: Math.round(item.wind.speed),
+            };
+          }
+        });
+        setWeather(byDate);
+        setWeatherLoading(false);
+      }).catch(()=>setWeatherLoading(false));
   }, []);
 
   // Firestore 실시간 구독
@@ -320,6 +361,30 @@ export default function App() {
                       ))}
                     </div>
                   </div>
+                  {/* 날씨 카드 */}
+                  {weather[d.date] ? (
+                    <div style={{ background:"linear-gradient(135deg,#0c2340,#0f3a2a)", border:"1px solid #1e4a6a", borderRadius:12, padding:"12px 14px", marginBottom:14, display:"flex", alignItems:"center", gap:12 }}>
+                      <div style={{ fontSize:40 }}>{weather[d.date].icon}</div>
+                      <div style={{ flex:1 }}>
+                        <div style={{ fontSize:11, color:"#64748b", marginBottom:2 }}>🇨🇳 웨이하이 날씨</div>
+                        <div style={{ display:"flex", alignItems:"baseline", gap:6 }}>
+                          <span style={{ fontSize:24, fontWeight:800, color:"#e2e8f0" }}>{weather[d.date].temp}°</span>
+                          <span style={{ fontSize:12, color:"#94a3b8" }}>{weather[d.date].desc}</span>
+                        </div>
+                        <div style={{ display:"flex", gap:10, marginTop:4 }}>
+                          <span style={{ fontSize:11, color:"#60a5fa" }}>💧 {weather[d.date].humidity}%</span>
+                          <span style={{ fontSize:11, color:"#4ade80" }}>💨 {weather[d.date].wind}m/s</span>
+                        </div>
+                      </div>
+                      <div style={{ textAlign:"right" }}>
+                        <div style={{ fontSize:12, color:"#f97316", fontWeight:700 }}>↑ {weather[d.date].tempMax}°</div>
+                        <div style={{ fontSize:12, color:"#60a5fa", fontWeight:700 }}>↓ {weather[d.date].tempMin}°</div>
+                      </div>
+                    </div>
+                  ) : weatherLoading ? (
+                    <div style={{ background:"#0d1f35", border:"1px solid #1e3a5f", borderRadius:12, padding:"10px 14px", marginBottom:14, fontSize:12, color:"#475569", textAlign:"center" }}>🌤️ 날씨 불러오는 중…</div>
+                  ) : null}
+
                   <div style={{ background:"#0d1f35", border:"1px solid #1e3a5f", borderRadius:12, padding:"12px 14px", marginBottom:14, display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
                     {[["수입",ds.income,"#4ade80"],["지출",ds.expense,"#fca5a5"],[activeDay===0?"잔액":"이월잔액",ds.balance,ds.balance>=0?"#60a5fa":"#fca5a5"]].map(([label,val,color])=>(
                       <div key={label} style={{ textAlign:"center" }}>
